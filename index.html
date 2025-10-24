@@ -10,21 +10,22 @@
     h1 { text-align:center; margin-bottom:30px; font-weight:700; color:#2c3e50; }
 
     .container { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
-    section { background:#fff; border-radius:8px; padding:20px; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex:1; min-width:300px; max-width:600px; }
+    section { background:#fff; border-radius:8px; padding:20px; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex:1; min-width:300px; max-width:700px; }
 
     table { width:100%; border-collapse:collapse; margin-bottom:15px; }
     th, td { padding:10px; text-align:left; border-bottom:1px solid #ddd; }
     th { background:#ecf0f1; font-weight:500; }
     tr:hover { background:#f9f9f9; }
 
-    button { background:#3498db; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; transition:0.2s; }
+    button { background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; transition:0.2s; margin-right:5px; }
     button:hover { background:#2980b9; }
 
-    input, select { padding:8px; border-radius:4px; border:1px solid #ccc; width:100%; box-sizing:border-box; }
+    input, select { padding:6px; border-radius:4px; border:1px solid #ccc; width:100%; box-sizing:border-box; }
     button[type="submit"] { margin-top:5px; width:fit-content; }
 
     .message { text-align:center; margin-bottom:15px; font-weight:500; min-height:24px; color:#27ae60; }
     .total { font-weight:600; margin-top:10px; }
+    .inline-input { width:80px; }
 
     @media (max-width:800px){ .container { flex-direction:column; align-items:center; } }
 </style>
@@ -38,9 +39,14 @@
     <!-- PRODUCTS -->
     <section>
         <h2>Products</h2>
+        <input type="text" id="product-search" placeholder="Search Products...">
+        <button onclick="bulkDeleteProducts()">Delete Selected</button>
         <table id="product-table">
             <thead>
-                <tr><th>ID</th><th>Name</th><th>Price</th><th>Action</th></tr>
+                <tr>
+                    <th><input type="checkbox" id="select-all-products"></th>
+                    <th>ID</th><th>Name</th><th>Price</th><th>Action</th>
+                </tr>
             </thead>
             <tbody></tbody>
         </table>
@@ -56,13 +62,28 @@
     <!-- ORDERS -->
     <section>
         <h2>Orders</h2>
+        <div style="margin-bottom:10px;">
+            <select id="order-sort">
+                <option value="latest">Latest</option>
+                <option value="total-asc">Total ↑</option>
+                <option value="total-desc">Total ↓</option>
+                <option value="status">Status</option>
+            </select>
+            <button onclick="filterOrders('All')">All</button>
+            <button onclick="filterOrders('Pending')">Pending</button>
+            <button onclick="filterOrders('Completed')">Completed</button>
+            <button onclick="filterOrders('Cancelled')">Cancelled</button>
+            <button onclick="bulkDeleteOrders()">Delete Selected</button>
+        </div>
         <table id="order-table">
             <thead>
-                <tr><th>Order ID</th><th>Product</th><th>Qty</th><th>Total</th><th>Action</th></tr>
+                <tr>
+                    <th><input type="checkbox" id="select-all-orders"></th>
+                    <th>Order ID</th><th>Product</th><th>Qty</th><th>Total</th><th>Status</th><th>Action</th>
+                </tr>
             </thead>
             <tbody></tbody>
         </table>
-
         <p class="total">Total Amount: $<span id="total-amount">0</span></p>
 
         <h3>Create Order</h3>
@@ -87,6 +108,8 @@ const addOrderForm = document.getElementById('add-order-form');
 const orderProductSelect = document.getElementById('order-product-select');
 const messageDiv = document.getElementById('message');
 const totalAmountSpan = document.getElementById('total-amount');
+const productSearch = document.getElementById('product-search');
+const orderSort = document.getElementById('order-sort');
 
 function showMessage(msg, color='green'){
     messageDiv.textContent = msg;
@@ -105,12 +128,17 @@ async function apiCall(url, method='GET', data=null){
 
 // -------- PRODUCTS --------
 async function loadProducts(){
-    const products = await apiCall(PRODUCT_URL);
+    let products = await apiCall(PRODUCT_URL);
     productTable.innerHTML = '';
     products.sort((a,b)=>a.id-b.id).forEach(p=>{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>$${p.price}</td>
-                        <td><button onclick="deleteProduct(${p.id})">Delete</button></td>`;
+        tr.innerHTML = `
+            <td><input type="checkbox" class="product-checkbox"></td>
+            <td>${p.id}</td>
+            <td contenteditable="true" class="inline-input" onblur="editProduct(${p.id}, 'name', this.textContent)">${p.name}</td>
+            <td contenteditable="true" class="inline-input" onblur="editProduct(${p.id}, 'price', this.textContent)">${p.price}</td>
+            <td><button onclick="deleteProduct(${p.id})">Delete</button></td>
+        `;
         productTable.appendChild(tr);
     });
     loadProductOptions(products);
@@ -147,50 +175,77 @@ async function deleteProduct(id){
     }catch(err){ showMessage(err.message,"red"); }
 }
 
+async function editProduct(id, field, value){
+    value = field === 'price' ? parseFloat(value) : value.trim();
+    if(field==='price' && value<=0){ showMessage('Price must be positive','red'); return; }
+    try{
+        await apiCall(`${PRODUCT_URL}/${id}`,'PUT',{ [field]: value }); // Backend must implement PUT
+        showMessage('Product updated successfully');
+        loadProducts();
+    }catch(err){ showMessage(err.message,'red'); }
+}
+
+function bulkDeleteProducts(){
+    const selected = [...document.querySelectorAll('.product-checkbox:checked')].map(cb => parseInt(cb.closest('tr').children[1].textContent));
+    if(selected.length===0){ showMessage('No products selected','red'); return; }
+    selected.forEach(id => deleteProduct(id));
+}
+
+// Search products
+productSearch.addEventListener('input', () => {
+    const query = productSearch.value.toLowerCase();
+    productTable.querySelectorAll('tr').forEach(row => {
+        const name = row.children[2].textContent.toLowerCase();
+        row.style.display = name.includes(query) ? '' : 'none';
+    });
+});
+
 // -------- ORDERS --------
 async function loadOrders(){
-    const orders = await apiCall(ORDER_URL);
+    let orders = await apiCall(ORDER_URL);
+    const sortType = orderSort.value;
+    if(sortType==='total-asc') orders.sort((a,b)=>a.quantity*a.product.price - b.quantity*b.product.price);
+    else if(sortType==='total-desc') orders.sort((a,b)=>b.quantity*b.product.price - a.quantity*a.product.price);
+    else if(sortType==='status') orders.sort((a,b)=>a.status.localeCompare(b.status));
+    else orders.sort((a,b)=>b.order_id - a.order_id);
+
     orderTable.innerHTML = '';
-    let total = 0;
-    orders.sort((a,b)=>b.order_id - a.order_id).forEach(o=>{
+    let total=0;
+    orders.forEach(o=>{
         const tr = document.createElement('tr');
 
-        // Color-coded status
-        let statusColor = '';
-        if(o.status === "Pending") statusColor = '#f1c40f';
-        else if(o.status === "Completed") statusColor = '#2ecc71';
-        else if(o.status === "Cancelled") statusColor = '#e74c3c';
-
-        // Dropdown for status
-        const statusDropdown = `
-            <select onchange="changeStatus(${o.order_id}, this.value)" style="padding:3px 5px; border-radius:5px;">
-                <option value="Pending" ${o.status==='Pending'?'selected':''}>Pending</option>
-                <option value="Completed" ${o.status==='Completed'?'selected':''}>Completed</option>
-                <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
-            </select>
-        `;
+        let statusColor='';
+        if(o.status==='Pending') statusColor='#f1c40f';
+        else if(o.status==='Completed') statusColor='#2ecc71';
+        else if(o.status==='Cancelled') statusColor='#e74c3c';
 
         tr.innerHTML = `
+            <td><input type="checkbox" class="order-checkbox"></td>
             <td>${o.order_id}</td>
             <td>${o.product.name}</td>
             <td>${o.quantity}</td>
-            <td>$${o.quantity * o.product.price}</td>
-            <td>${statusDropdown}</td>
+            <td>$${o.quantity*o.product.price}</td>
+            <td>
+                <select onchange="changeStatus(${o.order_id}, this.value)" style="padding:3px 5px; border-radius:5px; background:${statusColor}; color:#fff;">
+                    <option value="Pending" ${o.status==='Pending'?'selected':''}>Pending</option>
+                    <option value="Completed" ${o.status==='Completed'?'selected':''}>Completed</option>
+                    <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
+                </select>
+            </td>
             <td><button onclick="deleteOrder(${o.order_id})">Delete</button></td>
         `;
         orderTable.appendChild(tr);
-        total += o.quantity * o.product.price;
+        total += o.quantity*o.product.price;
     });
     totalAmountSpan.textContent = total;
 }
+
 async function changeStatus(orderId, newStatus){
-    try {
-        await apiCall(`${ORDER_URL}/${orderId}/status`, 'PUT', { status: newStatus });
+    try{
+        await apiCall(`${ORDER_URL}/${orderId}/status`,'PUT',{status:newStatus});
         showMessage(`Order #${orderId} status updated to ${newStatus}`);
         loadOrders();
-    } catch(err){
-        showMessage(err.message, 'red');
-    }
+    }catch(err){ showMessage(err.message,'red'); }
 }
 
 async function addOrder(e){
@@ -215,8 +270,33 @@ async function deleteOrder(id){
     }catch(err){ showMessage(err.message,"red"); }
 }
 
+function filterOrders(status){
+    const rows = orderTable.querySelectorAll('tr');
+    rows.forEach(row=>{
+        const rowStatus = row.children[5].querySelector('select').value;
+        row.style.display = (status==='All' || rowStatus===status)?'':'none';
+    });
+}
+
+function bulkDeleteOrders(){
+    const selected = [...document.querySelectorAll('.order-checkbox:checked')].map(cb=>parseInt(cb.closest('tr').children[1].textContent));
+    if(selected.length===0){ showMessage('No orders selected','red'); return; }
+    selected.forEach(id=>deleteOrder(id));
+}
+
+// Event listeners
 addProductForm.addEventListener('submit',addProduct);
 addOrderForm.addEventListener('submit',addOrder);
+orderSort.addEventListener('change',loadOrders);
+
+document.getElementById('select-all-products').addEventListener('change',(e)=>{
+    const checked = e.target.checked;
+    document.querySelectorAll('.product-checkbox').forEach(cb=>cb.checked=checked);
+});
+document.getElementById('select-all-orders').addEventListener('change',(e)=>{
+    const checked = e.target.checked;
+    document.querySelectorAll('.order-checkbox').forEach(cb=>cb.checked=checked);
+});
 
 // Initial load
 loadProducts();
