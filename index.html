@@ -77,8 +77,8 @@
 </div>
 
 <script>
-const PRODUCT_URL = "http://localhost:5001/products";
-const ORDER_URL = "http://localhost:5002/orders";
+const PRODUCT_URL = "https://bakecart-product-service.onrender.com/products";
+const ORDER_URL   = "https://bakecart-order-service.onrender.com/orders";
 
 const productTable = document.querySelector('#product-table tbody');
 const orderTable = document.querySelector('#order-table tbody');
@@ -187,12 +187,11 @@ async function changeStatus(orderId, newStatus){
     try {
         await apiCall(`${ORDER_URL}/${orderId}/status`, 'PUT', { status: newStatus });
         showMessage(`Order #${orderId} status updated to ${newStatus}`);
-        loadOrders(); // refresh table to show correct colors
+        loadOrders();
     } catch(err){
         showMessage(err.message, 'red');
     }
 }
-
 
 async function addOrder(e){
     e.preventDefault();
