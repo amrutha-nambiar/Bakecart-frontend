@@ -8,26 +8,28 @@
 <style>
     body { background:#f5f5f5; font-family:'Roboto',sans-serif; color:#333; padding:20px; }
     h1 { text-align:center; margin-bottom:30px; font-weight:700; color:#2c3e50; }
-
     .container { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
     section { background:#fff; border-radius:8px; padding:20px; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex:1; min-width:300px; max-width:700px; }
-
     table { width:100%; border-collapse:collapse; margin-bottom:15px; }
     th, td { padding:10px; text-align:left; border-bottom:1px solid #ddd; }
     th { background:#ecf0f1; font-weight:500; }
     tr:hover { background:#f9f9f9; }
-
     button { background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; transition:0.2s; margin-right:5px; }
     button:hover { background:#2980b9; }
-
     input, select { padding:6px; border-radius:4px; border:1px solid #ccc; width:100%; box-sizing:border-box; }
     button[type="submit"] { margin-top:5px; width:fit-content; }
-
     .message { text-align:center; margin-bottom:15px; font-weight:500; min-height:24px; color:#27ae60; }
     .total { font-weight:600; margin-top:10px; }
     .inline-input { width:80px; }
-
-    @media (max-width:800px){ .container { flex-direction:column; align-items:center; } }
+    .status-badge { padding: 3px 6px; border-radius: 5px; color:#fff; font-weight:bold; font-size:0.8em; margin-right:5px; }
+    .status-badge.pending { background:#f1c40f; }
+    .status-badge.completed { background:#2ecc71; }
+    .status-badge.cancelled { background:#e74c3c; }
+    @media (max-width:800px){ 
+        .container { flex-direction:column; align-items:center; }
+        table { display:block; overflow-x:auto; white-space:nowrap; }
+        th, td { min-width:120px; }
+    }
 </style>
 </head>
 <body>
@@ -50,6 +52,7 @@
             </thead>
             <tbody></tbody>
         </table>
+        <div id="products-pagination"></div>
 
         <h3>Add Product</h3>
         <form id="add-product-form">
@@ -84,6 +87,7 @@
             </thead>
             <tbody></tbody>
         </table>
+        <div id="orders-pagination"></div>
         <p class="total">Total Amount: $<span id="total-amount">0</span></p>
 
         <h3>Create Order</h3>
@@ -111,28 +115,30 @@ const totalAmountSpan = document.getElementById('total-amount');
 const productSearch = document.getElementById('product-search');
 const orderSort = document.getElementById('order-sort');
 
-function showMessage(msg, color='green'){
-    messageDiv.textContent = msg;
-    messageDiv.style.color = color;
-    setTimeout(() => messageDiv.textContent = '', 3000);
-}
+let currentProductPage=1, currentOrderPage=1, ITEMS_PER_PAGE=10;
+
+function showMessage(msg,color='green'){messageDiv.textContent=msg; messageDiv.style.color=color; setTimeout(()=>messageDiv.textContent='',3000);}
 
 async function apiCall(url, method='GET', data=null){
-    const options = { method, headers:{'Content-Type':'application/json'} };
-    if(data) options.body = JSON.stringify(data);
-    const res = await fetch(url, options);
+    const options={method,headers:{'Content-Type':'application/json'}};
+    if(data) options.body=JSON.stringify(data);
+    const res = await fetch(url,options);
     const resData = await res.json();
-    if(!res.ok) throw new Error(resData.error || 'API error');
+    if(!res.ok) throw new Error(resData.error||'API error');
     return resData;
 }
 
-// -------- PRODUCTS --------
-async function loadProducts(){
-    let products = await apiCall(PRODUCT_URL);
-    productTable.innerHTML = '';
-    products.sort((a,b)=>a.id-b.id).forEach(p=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
+// --- PRODUCTS ---
+async function loadProducts(page=1){
+    currentProductPage=page;
+    let products=await apiCall(PRODUCT_URL);
+    const start=(page-1)*ITEMS_PER_PAGE;
+    const paginated=products.slice(start,start+ITEMS_PER_PAGE);
+
+    productTable.innerHTML='';
+    paginated.forEach(p=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
             <td><input type="checkbox" class="product-checkbox"></td>
             <td>${p.id}</td>
             <td contenteditable="true" class="inline-input" onblur="editProduct(${p.id}, 'name', this.textContent)">${p.name}</td>
@@ -141,92 +147,89 @@ async function loadProducts(){
         `;
         productTable.appendChild(tr);
     });
+    renderPagination(products.length, page, 'products');
     loadProductOptions(products);
 }
 
+function renderPagination(totalItems,currentPage,type){
+    const container=document.getElementById(type==='products'?'products-pagination':'orders-pagination');
+    container.innerHTML='';
+    const totalPages=Math.ceil(totalItems/ITEMS_PER_PAGE);
+    if(currentPage>1){const btn=document.createElement('button'); btn.textContent='Prev'; btn.onclick=()=>type==='products'?loadProducts(currentPage-1):loadOrders(currentPage-1); container.appendChild(btn);}
+    if(currentPage<totalPages){const btn=document.createElement('button'); btn.textContent='Next'; btn.onclick=()=>type==='products'?loadProducts(currentPage+1):loadOrders(currentPage+1); container.appendChild(btn);}
+}
+
 async function loadProductOptions(products){
-    orderProductSelect.innerHTML = '<option value="">Select Product</option>';
+    orderProductSelect.innerHTML='<option value="">Select Product</option>';
     products.forEach(p=>{
-        const option = document.createElement('option');
+        const option=document.createElement('option');
         option.value=p.id;
         option.textContent=`${p.name} - $${p.price}`;
         orderProductSelect.appendChild(option);
     });
 }
 
-async function addProduct(e){
-    e.preventDefault();
-    const name = document.getElementById('product-name').value.trim();
-    const price = parseFloat(document.getElementById('product-price').value);
-    if(price<=0){ showMessage("Price must be positive","red"); return; }
-    try{
-        await apiCall(PRODUCT_URL,'POST',{name,price});
-        addProductForm.reset();
-        showMessage("Product added successfully");
-        loadProducts();
-    }catch(err){ showMessage(err.message,"red"); }
+async function addProduct(e){e.preventDefault();
+    const name=document.getElementById('product-name').value.trim();
+    const price=parseFloat(document.getElementById('product-price').value);
+    if(price<=0){showMessage("Price must be positive","red"); return;}
+    try{await apiCall(PRODUCT_URL,'POST',{name,price}); addProductForm.reset(); showMessage("Product added successfully"); loadProducts(currentProductPage);}
+    catch(err){showMessage(err.message,'red');}
 }
 
-async function deleteProduct(id){
-    try{
-        await apiCall(`${PRODUCT_URL}/${id}`,'DELETE');
-        showMessage("Product deleted");
-        loadProducts();
-    }catch(err){ showMessage(err.message,"red"); }
+async function deleteProduct(id){if(!confirm('Are you sure you want to delete this product?')) return;
+    try{await apiCall(`${PRODUCT_URL}/${id}`,'DELETE'); showMessage("Product deleted"); loadProducts(currentProductPage);}
+    catch(err){showMessage(err.message,'red');}
 }
 
-async function editProduct(id, field, value){
-    value = field === 'price' ? parseFloat(value) : value.trim();
-    if(field==='price' && value<=0){ showMessage('Price must be positive','red'); return; }
-    try{
-        await apiCall(`${PRODUCT_URL}/${id}`,'PUT',{ [field]: value }); // Backend must implement PUT
-        showMessage('Product updated successfully');
-        loadProducts();
-    }catch(err){ showMessage(err.message,'red'); }
+async function editProduct(id,field,value){
+    value=field==='price'?parseFloat(value):value.trim();
+    if(field==='price'&&value<=0){showMessage('Price must be positive','red'); return;}
+    try{await apiCall(`${PRODUCT_URL}/${id}`,'PUT',{[field]:value}); showMessage('Product updated'); loadProducts(currentProductPage);}
+    catch(err){showMessage(err.message,'red');}
 }
 
 function bulkDeleteProducts(){
-    const selected = [...document.querySelectorAll('.product-checkbox:checked')].map(cb => parseInt(cb.closest('tr').children[1].textContent));
-    if(selected.length===0){ showMessage('No products selected','red'); return; }
-    selected.forEach(id => deleteProduct(id));
+    const selected=[...document.querySelectorAll('.product-checkbox:checked')].map(cb=>parseInt(cb.closest('tr').children[1].textContent));
+    if(selected.length===0){showMessage('No products selected','red'); return;}
+    if(!confirm(`Delete ${selected.length} products?`)) return;
+    selected.forEach(id=>deleteProduct(id));
 }
 
-// Search products
-productSearch.addEventListener('input', () => {
-    const query = productSearch.value.toLowerCase();
-    productTable.querySelectorAll('tr').forEach(row => {
-        const name = row.children[2].textContent.toLowerCase();
-        row.style.display = name.includes(query) ? '' : 'none';
+productSearch.addEventListener('input',()=>{
+    const query=productSearch.value.toLowerCase();
+    productTable.querySelectorAll('tr').forEach(row=>{
+        const name=row.children[2].textContent.toLowerCase();
+        row.style.display=name.includes(query)?'':'none';
     });
 });
 
-// -------- ORDERS --------
-async function loadOrders(){
-    let orders = await apiCall(ORDER_URL);
-    const sortType = orderSort.value;
-    if(sortType==='total-asc') orders.sort((a,b)=>a.quantity*a.product.price - b.quantity*b.product.price);
-    else if(sortType==='total-desc') orders.sort((a,b)=>b.quantity*b.product.price - a.quantity*a.product.price);
+// --- ORDERS ---
+async function loadOrders(page=1){
+    currentOrderPage=page;
+    let orders=await apiCall(ORDER_URL);
+    const sortType=orderSort.value;
+    if(sortType==='total-asc') orders.sort((a,b)=>a.quantity*a.product.price-b.quantity*b.product.price);
+    else if(sortType==='total-desc') orders.sort((a,b)=>b.quantity*b.product.price-a.quantity*a.product.price);
     else if(sortType==='status') orders.sort((a,b)=>a.status.localeCompare(b.status));
-    else orders.sort((a,b)=>b.order_id - a.order_id);
+    else orders.sort((a,b)=>b.order_id-a.order_id);
 
-    orderTable.innerHTML = '';
+    const start=(page-1)*ITEMS_PER_PAGE;
+    const paginated=orders.slice(start,start+ITEMS_PER_PAGE);
+
+    orderTable.innerHTML='';
     let total=0;
-    orders.forEach(o=>{
-        const tr = document.createElement('tr');
-
-        let statusColor='';
-        if(o.status==='Pending') statusColor='#f1c40f';
-        else if(o.status==='Completed') statusColor='#2ecc71';
-        else if(o.status==='Cancelled') statusColor='#e74c3c';
-
-        tr.innerHTML = `
+    paginated.forEach(o=>{
+        const tr=document.createElement('tr');
+        let badgeClass=o.status.toLowerCase();
+        tr.innerHTML=`
             <td><input type="checkbox" class="order-checkbox"></td>
             <td>${o.order_id}</td>
             <td>${o.product.name}</td>
             <td>${o.quantity}</td>
             <td>$${o.quantity*o.product.price}</td>
-            <td>
-                <select onchange="changeStatus(${o.order_id}, this.value)" style="padding:3px 5px; border-radius:5px; background:${statusColor}; color:#fff;">
+            <td><span class="status-badge ${badgeClass}">${o.status}</span>
+                <select onchange="changeStatus(${o.order_id}, this.value)">
                     <option value="Pending" ${o.status==='Pending'?'selected':''}>Pending</option>
                     <option value="Completed" ${o.status==='Completed'?'selected':''}>Completed</option>
                     <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
@@ -235,68 +238,53 @@ async function loadOrders(){
             <td><button onclick="deleteOrder(${o.order_id})">Delete</button></td>
         `;
         orderTable.appendChild(tr);
-        total += o.quantity*o.product.price;
+        total+=o.quantity*o.product.price;
     });
-    totalAmountSpan.textContent = total;
+    totalAmountSpan.textContent=total;
+    renderPagination(orders.length,page,'orders');
 }
 
-async function changeStatus(orderId, newStatus){
-    try{
-        await apiCall(`${ORDER_URL}/${orderId}/status`,'PUT',{status:newStatus});
-        showMessage(`Order #${orderId} status updated to ${newStatus}`);
-        loadOrders();
-    }catch(err){ showMessage(err.message,'red'); }
+async function changeStatus(orderId,newStatus){
+    try{await apiCall(`${ORDER_URL}/${orderId}/status`,'PUT',{status:newStatus}); showMessage(`Order #${orderId} status updated to ${newStatus}`); loadOrders(currentOrderPage);}
+    catch(err){showMessage(err.message,'red');}
 }
 
-async function addOrder(e){
-    e.preventDefault();
+async function addOrder(e){e.preventDefault();
     const product_id=parseInt(orderProductSelect.value);
     const quantity=parseInt(document.getElementById('order-quantity').value);
-    if(!product_id){ showMessage("Select a product","red"); return; }
-    if(quantity<=0){ showMessage("Quantity must be positive","red"); return; }
-    try{
-        await apiCall(ORDER_URL,'POST',{product_id,quantity});
-        addOrderForm.reset();
-        showMessage("Order placed successfully");
-        loadOrders();
-    }catch(err){ showMessage(err.message,"red"); }
+    if(!product_id){showMessage("Select a product","red"); return;}
+    if(quantity<=0){showMessage("Quantity must be positive","red"); return;}
+    try{await apiCall(ORDER_URL,'POST',{product_id,quantity}); addOrderForm.reset(); showMessage("Order placed successfully"); loadOrders(currentOrderPage);}
+    catch(err){showMessage(err.message,'red');}
 }
 
-async function deleteOrder(id){
-    try{
-        await apiCall(`${ORDER_URL}/${id}`,'DELETE');
-        showMessage("Order deleted");
-        loadOrders();
-    }catch(err){ showMessage(err.message,"red"); }
+async function deleteOrder(id){if(!confirm('Are you sure you want to delete this order?')) return;
+    try{await apiCall(`${ORDER_URL}/${id}`,'DELETE'); showMessage("Order deleted"); loadOrders(currentOrderPage);}
+    catch(err){showMessage(err.message,'red');}
 }
 
 function filterOrders(status){
-    const rows = orderTable.querySelectorAll('tr');
+    const rows=orderTable.querySelectorAll('tr');
     rows.forEach(row=>{
-        const rowStatus = row.children[5].querySelector('select').value;
-        row.style.display = (status==='All' || rowStatus===status)?'':'none';
+        const rowStatus=row.children[5].querySelector('select').value;
+        row.style.display=(status==='All'||rowStatus===status)?'':'none';
     });
 }
 
 function bulkDeleteOrders(){
-    const selected = [...document.querySelectorAll('.order-checkbox:checked')].map(cb=>parseInt(cb.closest('tr').children[1].textContent));
-    if(selected.length===0){ showMessage('No orders selected','red'); return; }
+    const selected=[...document.querySelectorAll('.order-checkbox:checked')].map(cb=>parseInt(cb.closest('tr').children[1].textContent));
+    if(selected.length===0){showMessage('No orders selected','red'); return;}
+    if(!confirm(`Delete ${selected.length} orders?`)) return;
     selected.forEach(id=>deleteOrder(id));
 }
 
 // Event listeners
 addProductForm.addEventListener('submit',addProduct);
 addOrderForm.addEventListener('submit',addOrder);
-orderSort.addEventListener('change',loadOrders);
+orderSort.addEventListener('change',()=>loadOrders(currentOrderPage));
 
-document.getElementById('select-all-products').addEventListener('change',(e)=>{
-    const checked = e.target.checked;
-    document.querySelectorAll('.product-checkbox').forEach(cb=>cb.checked=checked);
-});
-document.getElementById('select-all-orders').addEventListener('change',(e)=>{
-    const checked = e.target.checked;
-    document.querySelectorAll('.order-checkbox').forEach(cb=>cb.checked=checked);
-});
+document.getElementById('select-all-products').addEventListener('change',(e)=>{const checked=e.target.checked; document.querySelectorAll('.product-checkbox').forEach(cb=>cb.checked=checked);});
+document.getElementById('select-all-orders').addEventListener('change',(e)=>{const checked=e.target.checked; document.querySelectorAll('.order-checkbox').forEach(cb=>cb.checked=checked);});
 
 // Initial load
 loadProducts();
