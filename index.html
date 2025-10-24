@@ -6,7 +6,7 @@
 <title>Bakecart Admin Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-    body { background:#f5f5f5; font-family:'Roboto',sans-serif; color:#333; padding:20px; }
+    body { background:#f5f5f5; font-family:'Roboto',sans-serif; color:#333; padding:20px; margin:0; }
     h1 { text-align:center; margin-bottom:30px; font-weight:700; color:#2c3e50; }
     .container { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
     section { background:#fff; border-radius:8px; padding:20px; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex:1; min-width:300px; max-width:700px; }
@@ -14,7 +14,7 @@
     th, td { padding:10px; text-align:left; border-bottom:1px solid #ddd; }
     th { background:#ecf0f1; font-weight:500; }
     tr:hover { background:#f9f9f9; }
-    button { background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; transition:0.2s; margin-right:5px; }
+    button { background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; transition:0.2s; margin-right:5px; font-size:0.9em; }
     button:hover { background:#2980b9; }
     input, select { padding:6px; border-radius:4px; border:1px solid #ccc; width:100%; box-sizing:border-box; }
     button[type="submit"] { margin-top:5px; width:fit-content; }
@@ -25,10 +25,24 @@
     .status-badge.pending { background:#f1c40f; }
     .status-badge.completed { background:#2ecc71; }
     .status-badge.cancelled { background:#e74c3c; }
-    @media (max-width:800px){ 
+
+    /* Pagination buttons */
+    #products-pagination button,
+    #orders-pagination button { margin:2px; }
+
+    /* Mobile Responsive */
+    @media (max-width:900px){
         .container { flex-direction:column; align-items:center; }
         table { display:block; overflow-x:auto; white-space:nowrap; }
         th, td { min-width:120px; }
+        input, select, button { font-size:0.9em; }
+        h1 { font-size:1.5em; }
+    }
+
+    @media (max-width:500px){
+        section { padding:15px; }
+        button { padding:5px 8px; font-size:0.85em; }
+        input, select { font-size:0.85em; }
     }
 </style>
 </head>
@@ -65,7 +79,7 @@
     <!-- ORDERS -->
     <section>
         <h2>Orders</h2>
-        <div style="margin-bottom:10px;">
+        <div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:5px;">
             <select id="order-sort">
                 <option value="latest">Latest</option>
                 <option value="total-asc">Total ↑</option>
@@ -88,7 +102,7 @@
             <tbody></tbody>
         </table>
         <div id="orders-pagination"></div>
-        <p class="total">Total Amount: $<span id="total-amount">0</span></p>
+        <p class="total">Total Amount: ₹<span id="total-amount">0</span></p>
 
         <h3>Create Order</h3>
         <form id="add-order-form">
@@ -142,12 +156,12 @@ async function loadProducts(page=1){
             <td><input type="checkbox" class="product-checkbox"></td>
             <td>${p.id}</td>
             <td contenteditable="true" class="inline-input" onblur="editProduct(${p.id}, 'name', this.textContent)">${p.name}</td>
-            <td contenteditable="true" class="inline-input" onblur="editProduct(${p.id}, 'price', this.textContent)">${p.price}</td>
+            <td contenteditable="true" class="inline-input" onblur="editProduct(${p.id}, 'price', this.textContent)">₹${p.price}</td>
             <td><button onclick="deleteProduct(${p.id})">Delete</button></td>
         `;
         productTable.appendChild(tr);
     });
-    renderPagination(products.length, page, 'products');
+    renderPagination(products.length,page,'products');
     loadProductOptions(products);
 }
 
@@ -164,14 +178,14 @@ async function loadProductOptions(products){
     products.forEach(p=>{
         const option=document.createElement('option');
         option.value=p.id;
-        option.textContent=`${p.name} - $${p.price}`;
+        option.textContent=`${p.name} - ₹${p.price}`;
         orderProductSelect.appendChild(option);
     });
 }
 
 async function addProduct(e){e.preventDefault();
     const name=document.getElementById('product-name').value.trim();
-    const price=parseFloat(document.getElementById('product-price').value);
+    let price=parseFloat(document.getElementById('product-price').value);
     if(price<=0){showMessage("Price must be positive","red"); return;}
     try{await apiCall(PRODUCT_URL,'POST',{name,price}); addProductForm.reset(); showMessage("Product added successfully"); loadProducts(currentProductPage);}
     catch(err){showMessage(err.message,'red');}
@@ -183,7 +197,7 @@ async function deleteProduct(id){if(!confirm('Are you sure you want to delete th
 }
 
 async function editProduct(id,field,value){
-    value=field==='price'?parseFloat(value):value.trim();
+    value=field==='price'?parseFloat(value.replace('₹','')):value.trim();
     if(field==='price'&&value<=0){showMessage('Price must be positive','red'); return;}
     try{await apiCall(`${PRODUCT_URL}/${id}`,'PUT',{[field]:value}); showMessage('Product updated'); loadProducts(currentProductPage);}
     catch(err){showMessage(err.message,'red');}
@@ -227,7 +241,7 @@ async function loadOrders(page=1){
             <td>${o.order_id}</td>
             <td>${o.product.name}</td>
             <td>${o.quantity}</td>
-            <td>$${o.quantity*o.product.price}</td>
+            <td>₹${o.quantity*o.product.price}</td>
             <td><span class="status-badge ${badgeClass}">${o.status}</span>
                 <select onchange="changeStatus(${o.order_id}, this.value)">
                     <option value="Pending" ${o.status==='Pending'?'selected':''}>Pending</option>
