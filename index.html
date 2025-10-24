@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
     body { background:#f5f5f5; font-family:'Roboto',sans-serif; color:#333; padding:20px; margin:0; }
-    h1 { text-align:center; margin-bottom:30px; font-weight:700; color:#2c3e50; }
     .container { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
     section { background:#fff; border-radius:8px; padding:20px; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex:1; min-width:300px; max-width:700px; }
     table { width:100%; border-collapse:collapse; margin-bottom:15px; }
@@ -25,10 +24,7 @@
     .status-badge.pending { background:#f1c40f; }
     .status-badge.completed { background:#2ecc71; }
     .status-badge.cancelled { background:#e74c3c; }
-
-    /* Pagination buttons */
-    #products-pagination button,
-    #orders-pagination button { margin:2px; }
+    #products-pagination button, #orders-pagination button { margin:2px; }
 
     /* Mobile Responsive */
     @media (max-width:900px){
@@ -36,35 +32,33 @@
         table { display:block; overflow-x:auto; white-space:nowrap; }
         th, td { min-width:120px; }
         input, select, button { font-size:0.9em; }
-        h1 { font-size:1.5em; }
     }
-
     @media (max-width:500px){
         section { padding:15px; }
         button { padding:5px 8px; font-size:0.85em; }
         input, select { font-size:0.85em; }
     }
-    <style>
-.titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    background: linear-gradient(90deg, #34495e, #2c3e50);
-    color: #ecf0f1;
-    font-weight: 700;
-    font-size: 1.8em;
-    padding: 15px 0;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    text-align: center;
-}
-</style>
+
+    /* Titlebar style */
+    .titlebar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: linear-gradient(90deg, #34495e, #2c3e50);
+        color: #ecf0f1;
+        font-weight: 700;
+        font-size: 1.8em;
+        padding: 15px 0;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        text-align: center;
+    }
 </style>
 </head>
 <body>
 
-<h1>Bakecart Admin Dashboard</h1>
+<h1 class="titlebar">🛒 Bakecart Admin Dashboard</h1>
 <div id="message" class="message"></div>
 
 <div class="container">
@@ -312,7 +306,6 @@ function bulkDeleteOrders(){
 addProductForm.addEventListener('submit',addProduct);
 addOrderForm.addEventListener('submit',addOrder);
 orderSort.addEventListener('change',()=>loadOrders(currentOrderPage));
-
 document.getElementById('select-all-products').addEventListener('change',(e)=>{const checked=e.target.checked; document.querySelectorAll('.product-checkbox').forEach(cb=>cb.checked=checked);});
 document.getElementById('select-all-orders').addEventListener('change',(e)=>{const checked=e.target.checked; document.querySelectorAll('.order-checkbox').forEach(cb=>cb.checked=checked);});
 
@@ -322,5 +315,3 @@ loadOrders();
 </script>
 </body>
 </html>
-
-
